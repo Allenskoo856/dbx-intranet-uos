@@ -7,12 +7,19 @@ on:
       - "uos-v*"
 
 permissions:
+  actions: write
   contents: write
 
 jobs:
   build-and-release:
     runs-on: ubuntu-22.04
     timeout-minutes: 90
+    env:
+      # GitHub-hosted runners are ephemeral. Keep Cargo's compiler work out of
+      # the cold path; the GHA-backed sccache is shared across release tags.
+      CARGO_INCREMENTAL: "0"
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: "true"
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -27,6 +34,7 @@ jobs:
         with:
           node-version: 22.13.0
           cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
 
       - name: Install Linux desktop build dependencies
         run: |
@@ -35,6 +43,27 @@ jobs:
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@1.97.1
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696 # v0.0.10
+        with:
+          version: "v0.10.0"
+
+      - name: Rust dependency and target cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "./ -> target"
+          shared-key: uos-offline-deb-x86_64-unknown-linux-gnu
+          cache-on-failure: true
+
+      - name: Report build cache configuration
+        shell: bash
+        run: |
+          echo "pnpm_store=$(pnpm store path)"
+          echo "cargo_home=${CARGO_HOME:-$HOME/.cargo}"
+          echo "cargo_target=${CARGO_TARGET_DIR:-$GITHUB_WORKSPACE/target}"
+          echo "sccache_backend=github-actions"
+          sccache --show-stats || true
 
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
@@ -71,3 +100,8 @@ jobs:
               --verify-tag
           fi
           gh release upload "$GITHUB_REF_NAME" dist/uos-offline/* --repo "$GITHUB_REPOSITORY" --clobber
+
+      - name: Report sccache statistics
+        if: always()
+        continue-on-error: true
+        run: sccache --show-stats
