@@ -32,6 +32,28 @@ pnpm install --frozen-lockfile
 ./packaging/uos/build-offline-deb.sh
 ```
 
+### 构建缓存与耗时定位
+
+`build-offline-deb.sh` 本身不把构建缓存写进制品；本地同一工作区会自然复用 `node_modules/` 和 `target/`，而 GitHub-hosted runner 每次都是临时机器，必须由工作流显式恢复缓存。当前工作流的缓存边界如下：
+
+| 缓存 | 位置/实现 | 失效条件 | 作用 |
+| --- | --- | --- | --- |
+| pnpm | `actions/setup-node` 的 `cache: pnpm`，key 使用 `pnpm-lock.yaml` | lockfile 或 Node/pnpm 组合变化 | 加快依赖下载；不缓存 Rust 编译 |
+| Cargo registry/git 与 `target/` | `Swatinem/rust-cache@v2`，共享 key `uos-offline-deb-x86_64-unknown-linux-gnu` | `Cargo.lock`、Rust 环境或共享 key 变化 | 复用 Cargo 依赖和已生成的 target 内容 |
+| Rust 编译器产物 | `mozilla-actions/sccache-action` 的 GitHub Actions backend | 编译器参数、feature、源码/依赖变化 | 对 `offline-uos` 的重复 crate 编译做跨 runner 复用 |
+
+构建前的 `Report build cache configuration` 和构建后的 `Report sccache statistics` 会记录 pnpm store、Cargo home、target 路径以及 sccache 命中统计。第一次变更缓存配置或依赖锁文件后的构建仍然是冷启动，需要先预热默认分支缓存；后续 `uos-v*` tag 才能复用。当前最慢步骤已定位为 Tauri/Rust 的 `Build UOS offline Debian package`，此前无 Rust 缓存实测约 21 分钟；pnpm 安装约数秒、Linux 系统依赖安装约 1 分钟，不是主要瓶颈。
+
+查看单次构建和缓存命中信息：
+
+```bash
+gh run view <run-id> --repo Allenskoo856/dbx-intranet-uos --json jobs
+gh run view <run-id> --repo Allenskoo856/dbx-intranet-uos --log \
+  | rg 'Rust dependency and target cache|sccache|Build UOS offline|Finished .*bundle'
+```
+
+这些缓存只存在于联网构建区，不会被打进 `.deb`，也不会改变目标 UOS 的离线运行策略。若换成另一套 Rust toolchain、Cargo feature 或 x86_64 以外架构，应使用新的共享 key，避免错误复用。
+
 脚本使用 `VITE_DBX_OFFLINE_MODE=true` 和 Cargo feature `offline-uos`，输出目录为：
 
 ```text
