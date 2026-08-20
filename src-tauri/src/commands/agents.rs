@@ -31,8 +31,17 @@ pub async fn list_installed_agents(
     state: State<'_, Arc<AppState>>,
     source: Option<DownloadSource>,
 ) -> Result<Vec<AgentDriverInfo>, String> {
-    let registry = fetch_registry_from(source.unwrap_or_default()).await.ok();
-    Ok(build_agent_list(&state.agent_manager, registry.as_ref()))
+    #[cfg(feature = "offline-uos")]
+    {
+        let _ = &source;
+        return Ok(build_agent_list(&state.agent_manager, None));
+    }
+
+    #[cfg(not(feature = "offline-uos"))]
+    {
+        let registry = fetch_registry_from(source.unwrap_or_default()).await.ok();
+        Ok(build_agent_list(&state.agent_manager, registry.as_ref()))
+    }
 }
 
 #[tauri::command]
@@ -73,29 +82,39 @@ pub async fn install_agent(
     source: Option<DownloadSource>,
     operation_id: Option<String>,
 ) -> Result<(), String> {
-    // Resolve the operation id first, then register the cancellation token
-    // under it BEFORE any awaitable setup (blocker check, lock wait, registry
-    // fetch) so a cancel fired while the UI shows the modal is observed by this
-    // exact install instead of being silently lost or crossing into a second
-    // same-driver install.
-    let operation_id = operation_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-    let cancellation = state.agent_manager.begin_install_cancellation(&install_cancellation_key(&operation_id)).await;
-    let result = async {
-        ensure_no_agent_update_blockers(state.inner().as_ref(), std::slice::from_ref(&db_type)).await?;
-        let app_handle = app.clone();
-        let progress_operation_id = operation_id.clone();
-        install_agent_driver_from_claimed(
-            &state.agent_manager,
-            &db_type,
-            source.unwrap_or_default(),
-            move |event| emit_agent_progress(&app_handle, &progress_operation_id, event),
-            &cancellation,
-        )
-        .await
+    #[cfg(feature = "offline-uos")]
+    {
+        let _ = (&app, &state, &db_type, &source, &operation_id);
+        return Err("UOS 离线版已禁用远程 Agent 驱动下载，请从受控内网介质导入离线驱动包。".to_string());
     }
-    .await;
-    state.agent_manager.finish_install_cancellation(&install_cancellation_key(&operation_id), &cancellation).await;
-    result
+
+    #[cfg(not(feature = "offline-uos"))]
+    {
+        // Resolve the operation id first, then register the cancellation token
+        // under it BEFORE any awaitable setup (blocker check, lock wait, registry
+        // fetch) so a cancel fired while the UI shows the modal is observed by this
+        // exact install instead of being silently lost or crossing into a second
+        // same-driver install.
+        let operation_id = operation_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+        let cancellation =
+            state.agent_manager.begin_install_cancellation(&install_cancellation_key(&operation_id)).await;
+        let result = async {
+            ensure_no_agent_update_blockers(state.inner().as_ref(), std::slice::from_ref(&db_type)).await?;
+            let app_handle = app.clone();
+            let progress_operation_id = operation_id.clone();
+            install_agent_driver_from_claimed(
+                &state.agent_manager,
+                &db_type,
+                source.unwrap_or_default(),
+                move |event| emit_agent_progress(&app_handle, &progress_operation_id, event),
+                &cancellation,
+            )
+            .await
+        }
+        .await;
+        state.agent_manager.finish_install_cancellation(&install_cancellation_key(&operation_id), &cancellation).await;
+        result
+    }
 }
 
 #[tauri::command]
@@ -105,32 +124,41 @@ pub async fn upgrade_all_agents(
     source: Option<DownloadSource>,
     operation_id: Option<String>,
 ) -> Result<UpgradeAllAgentDriversResult, String> {
-    let source = source.unwrap_or_default();
-    // Resolve the batch operation id first, then register the batch token under
-    // it BEFORE the registry fetch + blocker check so a cancel fired while the
-    // batch is still setting up aborts it instead of being lost.
-    let operation_id = operation_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-    let cancellation = state.agent_manager.begin_install_cancellation(&batch_cancellation_key(&operation_id)).await;
-    let result = async {
-        let registry = fetch_registry_from_claimed(source, &[cancellation.as_ref()]).await?;
-        let agents = build_agent_list(&state.agent_manager, Some(&registry));
-        let updatable: Vec<String> =
-            agents.iter().filter(|agent| agent.update_available).map(|agent| agent.db_type.clone()).collect();
-        ensure_no_agent_update_blockers(state.inner().as_ref(), &updatable).await?;
-        let app_handle = app.clone();
-        let progress_operation_id = operation_id.clone();
-        upgrade_all_agent_drivers_from_claimed(
-            &state.agent_manager,
-            source,
-            move |event| emit_agent_progress(&app_handle, &progress_operation_id, event),
-            &cancellation,
-            &operation_id,
-        )
-        .await
+    #[cfg(feature = "offline-uos")]
+    {
+        let _ = (&app, &state, &source, &operation_id);
+        return Err("UOS 离线版已禁用远程 Agent 驱动升级，请从受控内网介质导入离线驱动包。".to_string());
     }
-    .await;
-    state.agent_manager.finish_install_cancellation(&batch_cancellation_key(&operation_id), &cancellation).await;
-    result
+
+    #[cfg(not(feature = "offline-uos"))]
+    {
+        let source = source.unwrap_or_default();
+        // Resolve the batch operation id first, then register the batch token under
+        // it BEFORE the registry fetch + blocker check so a cancel fired while the
+        // batch is still setting up aborts it instead of being lost.
+        let operation_id = operation_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+        let cancellation = state.agent_manager.begin_install_cancellation(&batch_cancellation_key(&operation_id)).await;
+        let result = async {
+            let registry = fetch_registry_from_claimed(source, &[cancellation.as_ref()]).await?;
+            let agents = build_agent_list(&state.agent_manager, Some(&registry));
+            let updatable: Vec<String> =
+                agents.iter().filter(|agent| agent.update_available).map(|agent| agent.db_type.clone()).collect();
+            ensure_no_agent_update_blockers(state.inner().as_ref(), &updatable).await?;
+            let app_handle = app.clone();
+            let progress_operation_id = operation_id.clone();
+            upgrade_all_agent_drivers_from_claimed(
+                &state.agent_manager,
+                source,
+                move |event| emit_agent_progress(&app_handle, &progress_operation_id, event),
+                &cancellation,
+                &operation_id,
+            )
+            .await
+        }
+        .await;
+        state.agent_manager.finish_install_cancellation(&batch_cancellation_key(&operation_id), &cancellation).await;
+        result
+    }
 }
 
 #[tauri::command]
@@ -259,13 +287,22 @@ pub async fn reinstall_jre(
     source: Option<DownloadSource>,
     operation_id: Option<String>,
 ) -> Result<(), String> {
-    let key = jre_key.as_deref().unwrap_or(DEFAULT_JRE_KEY);
-    let app_handle = app.clone();
-    let operation_id = operation_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-    reinstall_agent_jre_from(&state.agent_manager, key, source.unwrap_or_default(), move |event| {
-        emit_agent_progress(&app_handle, &operation_id, event)
-    })
-    .await
+    #[cfg(feature = "offline-uos")]
+    {
+        let _ = (&app, &state, &jre_key, &source, &operation_id);
+        return Err("UOS 离线版已禁用远程 JRE 下载，请从受控内网介质导入离线运行时。".to_string());
+    }
+
+    #[cfg(not(feature = "offline-uos"))]
+    {
+        let key = jre_key.as_deref().unwrap_or(DEFAULT_JRE_KEY);
+        let app_handle = app.clone();
+        let operation_id = operation_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+        reinstall_agent_jre_from(&state.agent_manager, key, source.unwrap_or_default(), move |event| {
+            emit_agent_progress(&app_handle, &operation_id, event)
+        })
+        .await
+    }
 }
 
 fn emit_agent_progress(app: &tauri::AppHandle, operation_id: &str, event: AgentProgressEvent) {

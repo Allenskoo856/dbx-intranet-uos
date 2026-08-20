@@ -49,22 +49,32 @@ pub struct UpdateInfo {
 }
 
 pub async fn fetch_latest_release(locale: &str, source: crate::DownloadSource) -> Result<TauriRelease, String> {
-    let client = build_update_http_client()?;
-
-    let candidates = update_check_candidates(source);
-    let resp = fetch_first_available(&client, &candidates).await?;
-
-    let mut release = resp.json::<TauriRelease>().await.map_err(|e| format!("Failed to parse update response: {e}"))?;
-    if let Ok(github) = fetch_github_release_metadata(&client, &release.version).await {
-        release.github = Some(github);
+    #[cfg(feature = "offline-uos")]
+    {
+        let _ = (&locale, &source);
+        return Err("UOS 离线版已禁用公网更新检查，请通过内网发布介质升级 .deb。".to_string());
     }
-    // 非中文界面用户额外拉取英文 release notes；失败/版本不匹配则保持 None，上层回退中文。
-    if !is_chinese_locale(locale) {
-        if let Ok(notes_en) = fetch_latest_release_notes_en(&client, &release.version).await {
-            release.notes_en = Some(notes_en);
+
+    #[cfg(not(feature = "offline-uos"))]
+    {
+        let client = build_update_http_client()?;
+
+        let candidates = update_check_candidates(source);
+        let resp = fetch_first_available(&client, &candidates).await?;
+
+        let mut release =
+            resp.json::<TauriRelease>().await.map_err(|e| format!("Failed to parse update response: {e}"))?;
+        if let Ok(github) = fetch_github_release_metadata(&client, &release.version).await {
+            release.github = Some(github);
         }
+        // 非中文界面用户额外拉取英文 release notes；失败/版本不匹配则保持 None，上层回退中文。
+        if !is_chinese_locale(locale) {
+            if let Ok(notes_en) = fetch_latest_release_notes_en(&client, &release.version).await {
+                release.notes_en = Some(notes_en);
+            }
+        }
+        Ok(release)
     }
-    Ok(release)
 }
 
 async fn fetch_first_available(client: &reqwest::Client, candidates: &[String]) -> Result<reqwest::Response, String> {

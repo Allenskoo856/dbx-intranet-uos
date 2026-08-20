@@ -6,6 +6,7 @@ license = "Apache-2.0"
 
 [features]
 default = ["duckdb-sidecar", "dynamodb", "mq-admin", "sqlite-sqlcipher", "system-fonts"]
+offline-uos = []
 duckdb-sidecar = []
 dynamodb = ["dep:aws-sdk-dynamodb"]
 mq-admin = ["dep:rumqttc"]

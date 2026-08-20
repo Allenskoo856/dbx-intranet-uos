@@ -1,0 +1,73 @@
+name: UOS offline deb
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "uos-v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10.27.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22.13.0
+          cache: pnpm
+
+      - name: Install Linux desktop build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libappindicator3-dev librsvg2-dev patchelf libssl-dev xdg-utils
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@1.97.1
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build UOS offline Debian package
+        run: ./packaging/uos/build-offline-deb.sh
+
+      - name: Verify package metadata and self-test
+        run: ./packaging/uos/verify-offline-deb.sh "$(find dist/uos-offline -maxdepth 1 -name '*.deb' -print -quit)"
+
+      - name: Build isolated runtime smoke image
+        run: |
+          deb_file="$(find dist/uos-offline -maxdepth 1 -name '*.deb' -print -quit)"
+          docker build --file packaging/uos/Dockerfile.runtime-smoke --build-arg "DEB_FILE=${deb_file#./}" --tag dbx-uos-offline-smoke .
+          docker run --rm --network none dbx-uos-offline-smoke --dbx-offline-self-test
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dbx-uos-offline-${{ github.sha }}
+          path: dist/uos-offline/
+          if-no-files-found: error
+
+      - name: Create or update durable GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$GITHUB_REF_NAME" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "DBX UOS 离线版 $GITHUB_REF_NAME" \
+              --notes-file docs/intranet/offline-deployment-zh-CN.md \
+              --verify-tag
+          fi
+          gh release upload "$GITHUB_REF_NAME" dist/uos-offline/* --repo "$GITHUB_REPOSITORY" --clobber

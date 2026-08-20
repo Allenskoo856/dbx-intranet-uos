@@ -88,22 +88,31 @@ fn is_app_release_tag(tag: &str) -> bool {
 }
 
 pub async fn fetch_changelog(lang: &str) -> Result<ChangelogData, String> {
-    let lang = normalize_changelog_lang(lang);
-    let client = build_changelog_http_client()?;
-    let url = format!("{}{CHANGELOG_R2_PREFIX}{lang}.json", crate::R2_CDN_BASE);
+    #[cfg(feature = "offline-uos")]
+    {
+        let _ = lang;
+        return Err("UOS 离线版已禁用公网更新日志请求。".to_string());
+    }
 
-    let resp = client
-        .get(&url)
-        .header(reqwest::header::USER_AGENT, "dbx-changelog")
-        .send()
-        .await
-        .and_then(|r| r.error_for_status())
-        .map_err(|e| format!("Failed to fetch changelog: {e}"))?;
+    #[cfg(not(feature = "offline-uos"))]
+    {
+        let lang = normalize_changelog_lang(lang);
+        let client = build_changelog_http_client()?;
+        let url = format!("{}{CHANGELOG_R2_PREFIX}{lang}.json", crate::R2_CDN_BASE);
 
-    let mut data: ChangelogData = resp.json().await.map_err(|e| format!("Failed to parse changelog: {e}"))?;
-    // Treat R2 as untrusted cached data so auxiliary release streams never leak into the app UI.
-    data.releases.retain(|release| is_app_release_tag(release.tag.trim()));
-    Ok(data)
+        let resp = client
+            .get(&url)
+            .header(reqwest::header::USER_AGENT, "dbx-changelog")
+            .send()
+            .await
+            .and_then(|r| r.error_for_status())
+            .map_err(|e| format!("Failed to fetch changelog: {e}"))?;
+
+        let mut data: ChangelogData = resp.json().await.map_err(|e| format!("Failed to parse changelog: {e}"))?;
+        // Treat R2 as untrusted cached data so auxiliary release streams never leak into the app UI.
+        data.releases.retain(|release| is_app_release_tag(release.tag.trim()));
+        Ok(data)
+    }
 }
 
 fn build_changelog_http_client() -> Result<reqwest::Client, String> {

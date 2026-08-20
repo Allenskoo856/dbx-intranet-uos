@@ -38,6 +38,7 @@ import { isOfflineDriverPackage, webDriverImportAccept } from "@/lib/driverStore
 import { translateBackendError } from "@/i18n/backend-errors";
 import { DRIVER_CATEGORIES, getCategoryForAgentDriver, assertAgentDriverCategoriesComplete } from "@/lib/connection/driver-category-definitions";
 import { selectUpdatableDrivers, selectStableDrivers, hasAnyUpdatableDriverMatching } from "@/lib/connection/driverListFilter";
+import { isUosOfflineBuild } from "@/lib/app/offlineMode";
 
 const { t } = useI18n();
 const { toast } = useToast();
@@ -397,7 +398,7 @@ function removeQueuedDriverInstall(dbType: string) {
 }
 
 async function refreshAgents() {
-  updateAgentDrivers(await api.listInstalledAgents());
+  updateAgentDrivers(await (isUosOfflineBuild ? api.listInstalledAgentsLocal() : api.listInstalledAgents()));
   void loadDriverStoreUsage();
   // DEV: validate category coverage
   if (import.meta.env.DEV) {

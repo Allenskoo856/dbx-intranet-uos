@@ -60,6 +60,7 @@ import { connectionAttemptOriginalErrorMessage, connectionAttemptTimeoutMessage,
 import { consulAgentAddressesMatch } from "@/lib/consul/agentTarget";
 import { appendConnectionErrorHints, isJdbcMissingRuntimeDependencyError } from "@/lib/connection/connectionErrorHints";
 import { preventDialogDocumentSelectAll } from "@/lib/connection/dialogTextSelection";
+import { isUosOfflineBuild } from "@/lib/app/offlineMode";
 import { postgresTlsModeForForm } from "@/lib/connection/postgresTlsMode";
 import { buildMqKafkaConnectionExtra, mqKafkaConnectionTarget, resolveMqKafkaConnectionSource, type MqKafkaConnectionSource } from "@/lib/connection/mqKafkaConnection";
 import { assertCompleteDatabaseCategories, databaseSelectionForCategory } from "@/lib/connection/databaseCategoryOptions";
@@ -5688,7 +5689,7 @@ async function loadSshConfigHosts() {
 async function loadAgentDrivers() {
   try {
     agentDrivers.value = await api.listInstalledAgentsLocal();
-    if (!settingsStore.editorSettings.updateNotificationsEnabled) return;
+    if (isUosOfflineBuild || !settingsStore.editorSettings.updateNotificationsEnabled) return;
     api
       .listInstalledAgents()
       .then((drivers) => {

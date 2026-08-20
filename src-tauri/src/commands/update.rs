@@ -322,13 +322,22 @@ pub async fn check_for_updates(
     locale: Option<String>,
     source: Option<dbx_core::DownloadSource>,
 ) -> Result<UpdateInfo, String> {
-    let locale = locale.unwrap_or_else(|| "zh-CN".to_string());
-    let release = dbx_core::update::fetch_latest_release(&locale, source.unwrap_or_default()).await?;
-    let current_version = env!("CARGO_PKG_VERSION");
-    let mut info = dbx_core::update::build_update_info(release, current_version);
-    info.portable_mode = crate::data_dir::is_portable_mode();
-    info.manual_update_only = requires_manual_update(IS_WINDOWS_7_TARGET);
-    Ok(info)
+    #[cfg(feature = "offline-uos")]
+    {
+        let _ = (&locale, &source);
+        return Err("UOS 离线版已禁用公网更新检查，请通过内网发布介质升级 .deb。".to_string());
+    }
+
+    #[cfg(not(feature = "offline-uos"))]
+    {
+        let locale = locale.unwrap_or_else(|| "zh-CN".to_string());
+        let release = dbx_core::update::fetch_latest_release(&locale, source.unwrap_or_default()).await?;
+        let current_version = env!("CARGO_PKG_VERSION");
+        let mut info = dbx_core::update::build_update_info(release, current_version);
+        info.portable_mode = crate::data_dir::is_portable_mode();
+        info.manual_update_only = requires_manual_update(IS_WINDOWS_7_TARGET);
+        Ok(info)
+    }
 }
 
 fn requires_manual_update(is_windows_7_target: bool) -> bool {
@@ -337,13 +346,28 @@ fn requires_manual_update(is_windows_7_target: bool) -> bool {
 
 #[tauri::command]
 pub async fn fetch_changelog(lang: Option<String>) -> Result<dbx_core::changelog::ChangelogData, String> {
-    let lang = lang.unwrap_or_else(|| "en".to_string());
-    dbx_core::changelog::fetch_changelog(&lang).await
+    #[cfg(feature = "offline-uos")]
+    {
+        let _ = &lang;
+        return Err("UOS 离线版已禁用公网更新日志请求。".to_string());
+    }
+
+    #[cfg(not(feature = "offline-uos"))]
+    {
+        let lang = lang.unwrap_or_else(|| "en".to_string());
+        dbx_core::changelog::fetch_changelog(&lang).await
+    }
 }
 
 #[tauri::command]
 pub async fn get_system_proxy_url() -> Option<String> {
-    tauri::async_runtime::spawn_blocking(dbx_core::update::system_proxy_url).await.ok().flatten()
+    #[cfg(feature = "offline-uos")]
+    return None;
+
+    #[cfg(not(feature = "offline-uos"))]
+    {
+        tauri::async_runtime::spawn_blocking(dbx_core::update::system_proxy_url).await.ok().flatten()
+    }
 }
 
 #[tauri::command]
@@ -358,32 +382,42 @@ pub async fn download_update(
     source: UpdateDownloadSource,
     latest_version: Option<String>,
 ) -> Result<(), String> {
-    let portable_mode = crate::data_dir::is_portable_mode();
-    if requires_manual_update(IS_WINDOWS_7_TARGET) {
-        return Err("Windows 7 builds must be updated with the dedicated Windows 7 offline installer.".to_string());
+    #[cfg(feature = "offline-uos")]
+    {
+        let _ = (&app, &state, &source, &latest_version);
+        return Err("UOS 离线版不支持在线下载安装包，请通过内网发布的 .deb 升级。".to_string());
     }
-    let portable_version = if portable_mode {
-        let requested_version =
-            latest_version.as_deref().ok_or_else(|| "Latest version is required for portable updates.".to_string())?;
-        Some(update_portable::validate_requested_portable_version(requested_version, env!("CARGO_PKG_VERSION"))?)
-    } else {
-        None
-    };
-    let cancellation = state.begin_download()?;
-    let result = if let Some(version) = portable_version {
-        download_portable_update_inner(&app, &source, &version, &cancellation)
-            .await
-            .map(|archive| ReadyUpdate::Portable { archive, version })
-    } else {
-        download_update_inner(&app, &source, latest_version.as_deref(), &cancellation)
-            .await
-            .map(|(update, bytes)| ReadyUpdate::Installer { update: Box::new(update), bytes })
-    };
-    match result {
-        Ok(update) => state.finish_download(&cancellation, update),
-        Err(error) => {
-            state.finish_failed_download(&cancellation)?;
-            Err(error)
+
+    #[cfg(not(feature = "offline-uos"))]
+    {
+        let portable_mode = crate::data_dir::is_portable_mode();
+        if requires_manual_update(IS_WINDOWS_7_TARGET) {
+            return Err("Windows 7 builds must be updated with the dedicated Windows 7 offline installer.".to_string());
+        }
+        let portable_version = if portable_mode {
+            let requested_version = latest_version
+                .as_deref()
+                .ok_or_else(|| "Latest version is required for portable updates.".to_string())?;
+            Some(update_portable::validate_requested_portable_version(requested_version, env!("CARGO_PKG_VERSION"))?)
+        } else {
+            None
+        };
+        let cancellation = state.begin_download()?;
+        let result = if let Some(version) = portable_version {
+            download_portable_update_inner(&app, &source, &version, &cancellation)
+                .await
+                .map(|archive| ReadyUpdate::Portable { archive, version })
+        } else {
+            download_update_inner(&app, &source, latest_version.as_deref(), &cancellation)
+                .await
+                .map(|(update, bytes)| ReadyUpdate::Installer { update: Box::new(update), bytes })
+        };
+        match result {
+            Ok(update) => state.finish_download(&cancellation, update),
+            Err(error) => {
+                state.finish_failed_download(&cancellation)?;
+                Err(error)
+            }
         }
     }
 }
@@ -674,26 +708,35 @@ async fn wait_for_download_step<T>(
 
 #[tauri::command]
 pub fn install_downloaded_update(app: AppHandle, state: tauri::State<'_, PendingUpdateState>) -> Result<(), String> {
-    let ready = state.take_ready()?;
-    let portable = matches!(&ready, ReadyUpdate::Portable { .. });
-    let install_result = match &ready {
-        ReadyUpdate::Installer { update, bytes } => {
-            update.install(bytes).map_err(|error| format!("Failed to install update: {error}"))
-        }
-        ReadyUpdate::Portable { archive, version } => {
-            update_portable::ensure_portable_version_is_newer(version, env!("CARGO_PKG_VERSION"))
-                .and_then(|_| update_portable::launch_portable_update_helper(archive, version))
-        }
-    };
-    if let Err(error) = install_result {
-        state.restore_ready(ready)?;
-        return Err(error);
+    #[cfg(feature = "offline-uos")]
+    {
+        let _ = (&app, &state);
+        return Err("UOS 离线版不支持在线安装更新，请通过 dpkg 安装内网发布的 .deb。".to_string());
     }
-    state.finish_install()?;
-    if portable {
-        schedule_portable_update_exit(app);
+
+    #[cfg(not(feature = "offline-uos"))]
+    {
+        let ready = state.take_ready()?;
+        let portable = matches!(&ready, ReadyUpdate::Portable { .. });
+        let install_result = match &ready {
+            ReadyUpdate::Installer { update, bytes } => {
+                update.install(bytes).map_err(|error| format!("Failed to install update: {error}"))
+            }
+            ReadyUpdate::Portable { archive, version } => {
+                update_portable::ensure_portable_version_is_newer(version, env!("CARGO_PKG_VERSION"))
+                    .and_then(|_| update_portable::launch_portable_update_helper(archive, version))
+            }
+        };
+        if let Err(error) = install_result {
+            state.restore_ready(ready)?;
+            return Err(error);
+        }
+        state.finish_install()?;
+        if portable {
+            schedule_portable_update_exit(app);
+        }
+        Ok(())
     }
-    Ok(())
 }
 
 fn schedule_portable_update_exit(app: AppHandle) {

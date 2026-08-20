@@ -3,6 +3,7 @@ import { useSettingsStore } from "@/stores/settingsStore";
 import { appendDebugLog } from "@/lib/backend/debugLog";
 import { webdavSyncUpload } from "@/lib/backend/api";
 import { readWebDavAutoUploadConfig, WEB_DAV_AUTO_UPLOAD_STORAGE_KEYS } from "@/lib/webdav/webdavAutoUploadConfig";
+import { isUosOfflineBuild } from "@/lib/app/offlineMode";
 
 export function useWebDavAutoUpload() {
   const settingsStore = useSettingsStore();
@@ -17,6 +18,7 @@ export function useWebDavAutoUpload() {
 
   function schedule() {
     clearTimer();
+    if (isUosOfflineBuild) return;
     const config = readWebDavAutoUploadConfig();
     if (!config.enabled || !config.webDavConfig) return;
 

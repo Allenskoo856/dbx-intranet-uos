@@ -9,6 +9,7 @@ import type { UpdateDownloadProgress } from "@/lib/backend/tauri";
 import { currentLocale } from "@/i18n";
 import { shouldBlockAppUpdate } from "@/lib/app/appUpdateTaskGuard";
 import { downloadAndInstallUpdateWhenIdle, installDownloadedUpdateWhenIdle } from "@/lib/app/appUpdateInstallFlow";
+import { isUosOfflineBuild } from "@/lib/app/offlineMode";
 
 interface UseAppUpdaterOptions {
   getActiveTaskCount?: () => number;
@@ -124,7 +125,7 @@ export function useAppUpdater(options: UseAppUpdaterOptions = {}) {
   const isIgnoringUpdate = ref(false);
   const activeTaskCount = computed(() => Math.max(0, Math.trunc(options.getActiveTaskCount?.() ?? 0)));
   const hasUpdateAvailable = computed(() => updateInfo.value?.update_available === true && !isUpdateIgnored(updateInfo.value, settingsStore.editorSettings.ignoredUpdateVersion));
-  const latestReleaseUrl = "https://github.com/t8y2/dbx/releases/latest";
+  const latestReleaseUrl = isUosOfflineBuild ? "" : "https://github.com/t8y2/dbx/releases/latest";
   let activeDownloadAttempt = 0;
   let pendingCancellation: Promise<void> | undefined;
 
@@ -138,6 +139,13 @@ export function useAppUpdater(options: UseAppUpdaterOptions = {}) {
 
   async function checkUpdates(options: { silent?: boolean } = {}) {
     if (checkingUpdates.value) return;
+    if (isUosOfflineBuild) {
+      if (!options.silent) {
+        updateCheckMessage.value = "UOS 离线版已禁用公网更新检查，请通过内网发布的 .deb 升级。";
+        showUpdateDialog.value = true;
+      }
+      return;
+    }
     checkingUpdates.value = true;
     updateCheckMessage.value = "";
     try {
@@ -176,6 +184,7 @@ export function useAppUpdater(options: UseAppUpdaterOptions = {}) {
   }
 
   function openLatestRelease() {
+    if (isUosOfflineBuild) return;
     const url = resolveUpdateReleaseUrl(updateInfo.value, settingsStore.editorSettings.updateDownloadSource, latestReleaseUrl);
     openUrl(url);
   }
@@ -202,6 +211,10 @@ export function useAppUpdater(options: UseAppUpdaterOptions = {}) {
   }
 
   async function downloadAndInstallUpdate() {
+    if (isUosOfflineBuild) {
+      toast("UOS 离线版不支持在线下载安装包，请通过内网发布的 .deb 升级。", 5000);
+      return;
+    }
     if (!isTauriRuntime() || isDownloadingUpdate.value || isInstallingUpdate.value || updateDownloaded.value || updateReady.value) return;
     if (!canDownloadAndInstallUpdate(updateInfo.value, true)) {
       openLatestRelease();

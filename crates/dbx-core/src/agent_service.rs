@@ -389,7 +389,15 @@ pub async fn fetch_registry_from_claimed(
     source: DownloadSource,
     cancellations: &[&AgentInstallCancellation],
 ) -> Result<AgentRegistry, String> {
+    #[cfg(feature = "offline-uos")]
+    {
+        let _ = (&source, &cancellations);
+        return Err("UOS 离线版已禁用公网 Agent 驱动仓库。请从受控内网介质导入已校验的离线驱动包。".to_string());
+    }
+
+    #[cfg(not(feature = "offline-uos"))]
     let urls = source.download_candidate_urls(REGISTRY_PATH, REGISTRY_R2_PATH)?;
+    #[cfg(not(feature = "offline-uos"))]
     fetch_registry_from_urls(source, &urls, cancellations).await
 }
 

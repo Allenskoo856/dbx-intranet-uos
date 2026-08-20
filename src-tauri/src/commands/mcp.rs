@@ -251,38 +251,44 @@ pub async fn check_mcp_server_status(app: AppHandle) -> Result<McpServerStatus, 
 
 #[tauri::command]
 pub async fn install_mcp_server() -> Result<String, String> {
-    tauri::async_runtime::spawn_blocking(|| {
-        let runtime = resolve_node_runtime().ok_or_else(|| {
-            format!(
+    #[cfg(feature = "offline-uos")]
+    return Err("UOS 离线版已禁用 npm 公网安装/更新 MCP Server，请预置内网构建产物。".to_string());
+
+    #[cfg(not(feature = "offline-uos"))]
+    {
+        tauri::async_runtime::spawn_blocking(|| {
+            let runtime = resolve_node_runtime().ok_or_else(|| {
+                format!(
                 "Unable to resolve a compatible Node.js ({}) and npm runtime. Install Node.js with npm and try again.",
                 MCP_MIN_NODE_VERSION_REQUIREMENT
             )
-        })?;
-        let output = runtime.install_or_update()?;
+            })?;
+            let output = runtime.install_or_update()?;
 
-        if !output.success {
-            let error_msg = if !output.stderr.is_empty() { output.stderr } else { output.stdout };
-            return Err(format!("Installation failed: {}", error_msg));
-        }
+            if !output.success {
+                let error_msg = if !output.stderr.is_empty() { output.stderr } else { output.stdout };
+                return Err(format!("Installation failed: {}", error_msg));
+            }
 
-        let installed = runtime.refresh().ok_or_else(|| {
-            format!(
-                "Installation completed, but the Node.js runtime at {} could not be validated.",
-                runtime.node_path.display()
-            )
-        })?;
-        installed.mcp_script_path.as_ref().ok_or_else(|| {
-            format!(
-                "Installation completed, but {} was not found under {}.",
-                MCP_PACKAGE_NAME,
-                installed.npm_root.display()
-            )
-        })?;
-        let version = installed.mcp_version.unwrap_or_else(|| "unknown".to_string());
-        Ok(format!("Successfully installed @dbx-app/mcp-server@{}", version))
-    })
-    .await
-    .map_err(|e| e.to_string())?
+            let installed = runtime.refresh().ok_or_else(|| {
+                format!(
+                    "Installation completed, but the Node.js runtime at {} could not be validated.",
+                    runtime.node_path.display()
+                )
+            })?;
+            installed.mcp_script_path.as_ref().ok_or_else(|| {
+                format!(
+                    "Installation completed, but {} was not found under {}.",
+                    MCP_PACKAGE_NAME,
+                    installed.npm_root.display()
+                )
+            })?;
+            let version = installed.mcp_version.unwrap_or_else(|| "unknown".to_string());
+            Ok(format!("Successfully installed @dbx-app/mcp-server@{}", version))
+        })
+        .await
+        .map_err(|e| e.to_string())?
+    }
 }
 
 #[tauri::command]
@@ -311,24 +317,32 @@ pub async fn uninstall_mcp_server() -> Result<String, String> {
 }
 
 async fn fetch_latest_mcp_version() -> Result<String, String> {
-    let mut builder = reqwest::Client::builder().timeout(Duration::from_secs(10)).user_agent("dbx-mcp-status-checker");
-    let proxy_url =
-        tauri::async_runtime::spawn_blocking(dbx_core::update::system_proxy_url).await.map_err(|e| e.to_string())?;
-    if let Some(proxy_url) = proxy_url {
-        let proxy = reqwest::Proxy::all(&proxy_url).map_err(|e| format!("Invalid system proxy URL: {e}"))?;
-        builder = builder.proxy(proxy);
+    #[cfg(feature = "offline-uos")]
+    return Err("UOS 离线版已禁用 MCP Registry 公网检查。".to_string());
+
+    #[cfg(not(feature = "offline-uos"))]
+    {
+        let mut builder =
+            reqwest::Client::builder().timeout(Duration::from_secs(10)).user_agent("dbx-mcp-status-checker");
+        let proxy_url = tauri::async_runtime::spawn_blocking(dbx_core::update::system_proxy_url)
+            .await
+            .map_err(|e| e.to_string())?;
+        if let Some(proxy_url) = proxy_url {
+            let proxy = reqwest::Proxy::all(&proxy_url).map_err(|e| format!("Invalid system proxy URL: {e}"))?;
+            builder = builder.proxy(proxy);
+        }
+        let client = builder.build().map_err(|e| format!("Failed to create HTTP client: {e}"))?;
+        let package = client
+            .get(MCP_LATEST_URL)
+            .send()
+            .await
+            .and_then(|r| r.error_for_status())
+            .map_err(|e| format!("Failed to check MCP Server updates: {e}"))?
+            .json::<NpmLatestPackage>()
+            .await
+            .map_err(|e| format!("Failed to parse MCP Server update response: {e}"))?;
+        Ok(package.version)
     }
-    let client = builder.build().map_err(|e| format!("Failed to create HTTP client: {e}"))?;
-    let package = client
-        .get(MCP_LATEST_URL)
-        .send()
-        .await
-        .and_then(|r| r.error_for_status())
-        .map_err(|e| format!("Failed to check MCP Server updates: {e}"))?
-        .json::<NpmLatestPackage>()
-        .await
-        .map_err(|e| format!("Failed to parse MCP Server update response: {e}"))?;
-    Ok(package.version)
 }
 
 pub(crate) async fn resolve_mcp_server_command() -> Result<(String, Vec<String>), String> {

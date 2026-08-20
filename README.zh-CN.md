@@ -236,6 +236,10 @@ flatpak install flatpark com.dbxio.dbx
 
 银河麒麟 V10、统信 UOS 等系统推荐选择 **APM（AmberPM）版本**，以减少发行版依赖差异导致的安装或启动问题。APM 在兼容环境中运行 DBX；如果为 Agent/JDBC 驱动选择宿主机 Java，需要在路径前添加 `/host`，例如将 `/usr/bin/java` 填写为 `/host/usr/bin/java`。
 
+### UOS/Debian-like 内网离线版
+
+本 fork 提供面向 x86_64 UOS/Debian-like 内网的 `.deb` 构建和安装手册：[DBX UOS 内网离线版](docs/intranet/README.md)。离线包关闭 DBX 自身的公网更新、驱动/MCP 远程检查和自动上传；请先校验 Release 中的 `SHA256SUMS`，再通过 `dpkg -i` 安装。当前包依赖 WebKitGTK 4.1，原版 Debian 10 stock 的 WebKitGTK 4.0 不能直接作为已验证运行环境。
+
 ## 自托管 (Docker)
 
 DBX 提供 Web 版本，可通过 Docker 部署。示例使用 `latest` 标签以拉取当前发布版本。

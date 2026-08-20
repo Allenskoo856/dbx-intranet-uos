@@ -1,6 +1,7 @@
 import { ref } from "vue";
 import * as api from "@/lib/backend/api";
 import { beginMcpStatusRequest, isLatestMcpStatusRequest, mcpUpdateAvailability } from "@/lib/mcp/mcpUpdateStatus";
+import { isUosOfflineBuild } from "@/lib/app/offlineMode";
 
 interface UseMcpUpdateBadgeOptions {
   isDesktop: boolean;
@@ -17,7 +18,7 @@ export function useMcpUpdateBadge(options: UseMcpUpdateBadgeOptions) {
   const mcpUpdateAvailable = ref(false);
 
   async function refreshMcpUpdateStatus() {
-    if (!options.isDesktop || !options.updateNotificationsEnabled()) return;
+    if (isUosOfflineBuild || !options.isDesktop || !options.updateNotificationsEnabled()) return;
     const requestId = beginMcpStatusRequest();
     try {
       const status = await api.checkMcpServerStatus();

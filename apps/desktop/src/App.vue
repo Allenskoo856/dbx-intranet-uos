@@ -59,6 +59,7 @@ import { resolveExecutableSql, resolveExecutableSqlWithBackend, type SqlExecutio
 import { uuid } from "@/lib/common/utils";
 import { isMacOS, isWindows } from "@/lib/backend/platform";
 import { isTauriRuntime } from "@/lib/backend/tauriRuntime";
+import { isUosOfflineBuild } from "@/lib/app/offlineMode";
 import { openQueryResultArchiveFile } from "@/lib/query/queryResultArchiveFile";
 import { rememberExternalSqlFileTarget, resolveExternalSqlFileTarget, unassociatedExternalSqlFileTarget } from "@/lib/sql/externalSqlFileTarget";
 import { externalSqlFileOpenErrorMessage, readBrowserSqlFile, sqlFileTitleFromPath } from "@/lib/sql/sqlFileOpen";
@@ -198,7 +199,7 @@ const { setupFileDrop } = useFileDrop();
 const isDesktop = isTauriRuntime();
 const { mcpUpdateAvailable, refreshMcpUpdateStatus, handleMcpStatusChanged } = useMcpUpdateBadge({
   isDesktop,
-  updateNotificationsEnabled: () => settingsStore.editorSettings.updateNotificationsEnabled,
+  updateNotificationsEnabled: () => !isUosOfflineBuild && settingsStore.editorSettings.updateNotificationsEnabled,
 });
 const drawDesktopWindowFrame = shouldDrawDesktopWindowFrame(isMacOS(), isDesktop, isWindows());
 const UPDATE_CHECK_INTERVAL_MS = 60 * 60 * 1000;
@@ -319,7 +320,7 @@ function updateAgentDriverUpdateCount(count: number) {
 }
 
 async function refreshAgentDriverUpdateCount() {
-  if (!isDesktop || !settingsStore.editorSettings.updateNotificationsEnabled) return;
+  if (isUosOfflineBuild || !isDesktop || !settingsStore.editorSettings.updateNotificationsEnabled) return;
   try {
     const drivers = await api.listInstalledAgents();
     if (!settingsStore.editorSettings.updateNotificationsEnabled) return;
@@ -2513,13 +2514,22 @@ function openDriverStoreFromEvent(event: Event) {
 }
 
 function runUpdateNotificationChecks() {
-  if (!updateNotificationsEnabled.value) return;
+  if (isUosOfflineBuild || !updateNotificationsEnabled.value) return;
   checkUpdates({ silent: true });
   void refreshAgentDriverUpdateCount();
   void refreshMcpUpdateStatus();
 }
 
+function requestUpdateCheck() {
+  void checkUpdates();
+}
+
 watch(updateNotificationsEnabled, (enabled) => {
+  if (isUosOfflineBuild) {
+    agentDriverUpdateCount.value = 0;
+    mcpUpdateAvailable.value = false;
+    return;
+  }
   if (!enabled) {
     agentDriverUpdateCount.value = 0;
     mcpUpdateAvailable.value = false;
@@ -2585,12 +2595,14 @@ onMounted(async () => {
   desktopOpenTabsRestorationBarrier = createOpenTabsRestorationBarrier();
   void initApp();
   setupFileDrop().catch(() => {});
-  setTimeout(() => {
-    runUpdateNotificationChecks();
-    if (updateNotificationsEnabled.value && !updateCheckTimer) {
-      updateCheckTimer = setInterval(runUpdateNotificationChecks, UPDATE_CHECK_INTERVAL_MS);
-    }
-  }, 10_000);
+  if (!isUosOfflineBuild) {
+    setTimeout(() => {
+      runUpdateNotificationChecks();
+      if (updateNotificationsEnabled.value && !updateCheckTimer) {
+        updateCheckTimer = setInterval(runUpdateNotificationChecks, UPDATE_CHECK_INTERVAL_MS);
+      }
+    }, 10_000);
+  }
   api
     .getAppVersion()
     .then((v) => {
@@ -2651,7 +2663,7 @@ onUnmounted(() => {
           @open-github="openGitHub"
           @open-settings="openSettings(toolbarMcpUpdateAvailable ? 'mcp' : 'appearance')"
           @open-driver-store="openDriverStorePage"
-          @check-updates="checkUpdates()"
+          @check-updates="requestUpdateCheck()"
           @open-transfer="dialogs.showTransferDialog.value = true"
           @open-sql-file="dialogs.showSqlFileDialog.value = true"
           @open-schema-diff="dialogs.showSchemaDiffDialog.value = true"
@@ -2712,7 +2724,7 @@ onUnmounted(() => {
                 :checking-updates="checkingUpdates"
                 class="flex-1 min-h-0"
                 @update:open="(open: boolean) => (open ? activateSettingsPage() : closeSettingsPage())"
-                @check-updates="checkUpdates()"
+                @check-updates="requestUpdateCheck()"
               />
               <div v-if="activeTab" v-show="!driverStoreActive && !settingsStore.settingsPageActive" class="flex flex-col flex-1 min-h-0">
                 <EditorToolbar
