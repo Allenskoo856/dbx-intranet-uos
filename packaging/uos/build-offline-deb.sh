@@ -19,6 +19,7 @@ esac
 
 command -v pnpm >/dev/null || { echo "pnpm 10.27.0 is required" >&2; exit 2; }
 command -v git >/dev/null || { echo "git is required" >&2; exit 2; }
+command -v dpkg-deb >/dev/null || { echo "dpkg-deb is required to build the UOS package" >&2; exit 2; }
 
 version="$(sed -n 's/^[[:space:]]*"version":[[:space:]]*"\([^"]*\)"[,]*$/\1/p' package.json | head -n 1)"
 [[ -n "$version" ]] || { echo "Could not read package version" >&2; exit 2; }
@@ -40,7 +41,52 @@ fi
 output_dir="$repo_root/dist/uos-offline"
 mkdir -p "$output_dir"
 asset="$output_dir/DBX_${version}_uos-offline_${deb_arch}.deb"
-cp "$deb_source" "$asset"
+
+# Keep a stable local entrypoint even when a Tauri CLI/config combination uses
+# the product name for the Debian binary filename. The offline manual and
+# smoke image intentionally depend on /usr/bin/dbx, so normalize the bundle
+# before publishing it instead of making every consumer discover a variant.
+normalize_deb_entrypoint() {
+  local input="$1"
+  local output="$2"
+  local package_root
+  local candidate
+  local -a candidates=()
+
+  package_root="$(mktemp -d "${TMPDIR:-/tmp}/dbx-uos-deb.XXXXXX")"
+  dpkg-deb --extract "$input" "$package_root"
+  mkdir -p "$package_root/DEBIAN"
+  dpkg-deb --control "$input" "$package_root/DEBIAN"
+
+  if [[ ! -x "$package_root/usr/bin/dbx" ]]; then
+    while IFS= read -r candidate; do
+      candidates+=("$candidate")
+    done < <(find "$package_root/usr/bin" -maxdepth 1 -type f -perm -u+x -printf '%f\n' 2>/dev/null | sort)
+
+    if [[ "${#candidates[@]}" -ne 1 ]]; then
+      echo "Could not identify the single Tauri application binary in the Debian bundle." >&2
+      dpkg-deb --contents "$input" >&2
+      rm -rf "$package_root"
+      return 1
+    fi
+
+    ln -s "${candidates[0]}" "$package_root/usr/bin/dbx"
+    echo "Normalized offline entrypoint: /usr/bin/dbx -> ${candidates[0]}"
+  fi
+
+  (
+    cd "$package_root"
+    find . -type f ! -path './DEBIAN/*' -print0 |
+      sort -z |
+      xargs -0 md5sum |
+      sed 's#  \./#  #'
+  ) > "$package_root/DEBIAN/md5sums"
+
+  dpkg-deb --build "$package_root" "$output" >/dev/null
+  rm -rf "$package_root"
+}
+
+normalize_deb_entrypoint "$deb_source" "$asset"
 sha256sum "$asset" > "$asset.sha256"
 cp "$asset.sha256" "$output_dir/SHA256SUMS"
 
