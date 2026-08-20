@@ -16,17 +16,17 @@ fi
 
 package_info="$(dpkg-deb --info "$deb_path")"
 printf '%s\n' "$package_info"
-printf '%s\n' "$package_info" | grep -Eq 'Architecture: amd64' || {
+grep -Eq 'Architecture: amd64' <<<"$package_info" || {
   echo "The offline UOS package must be amd64/x86_64." >&2
   exit 1
 }
-printf '%s\n' "$package_info" | grep -Eq 'libwebkit2gtk-4\.1-0' || {
+grep -Eq 'libwebkit2gtk-4\.1-0' <<<"$package_info" || {
   echo "The package does not declare the WebKitGTK 4.1 runtime dependency." >&2
   exit 1
 }
 
 contents="$(dpkg-deb --contents "$deb_path")"
-printf '%s\n' "$contents" | grep -Eq '/usr/bin/dbx([[:space:]]|$)' || {
+grep -Eq '/usr/bin/dbx([[:space:]]|$)' <<<"$contents" || {
   echo "The package does not contain /usr/bin/dbx." >&2
   exit 1
 }
@@ -39,7 +39,7 @@ self_test="$extract_dir/usr/bin/dbx"
 self_test_output="$($self_test --dbx-offline-self-test)"
 printf '%s\n' "$self_test_output"
 for marker in network_policy=deny-public updater=disabled agent_remote_downloads=disabled mcp_registry_checks=disabled; do
-  printf '%s\n' "$self_test_output" | grep -Fq "$marker" || {
+  grep -Fq "$marker" <<<"$self_test_output" || {
     echo "Missing offline self-test marker: $marker" >&2
     exit 1
   }
