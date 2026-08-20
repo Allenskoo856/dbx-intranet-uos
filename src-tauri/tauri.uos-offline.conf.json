@@ -5,7 +5,7 @@
   "bundle": {
     "targets": ["deb"],
     "createUpdaterArtifacts": false,
-    "category": "Office",
+    "category": "Utility",
     "shortDescription": "DBX 内网离线数据库客户端",
     "longDescription": "面向统信 UOS 与 Debian-like 内网环境的 DBX 离线桌面客户端。",
     "linux": {
