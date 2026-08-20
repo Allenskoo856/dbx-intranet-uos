@@ -31,9 +31,9 @@ export VITE_DBX_OFFLINE_MODE=true
 export DBX_OFFLINE_BUILD=true
 pnpm tauri build --ci --features offline-uos --bundles deb --config src-tauri/tauri.uos-offline.conf.json
 
-deb_source="$(find src-tauri/target -type f -path '*/bundle/deb/*.deb' -printf '%T@ %p\n' 2>/dev/null | sort -nr | sed -n '1s/^[^ ]* //p')"
+deb_source="$(find target -type f -path '*/bundle/deb/*.deb' -printf '%T@ %p\n' 2>/dev/null | sort -nr | sed -n '1s/^[^ ]* //p')"
 if [[ -z "$deb_source" ]]; then
-  echo "Tauri completed without producing a .deb under src-tauri/target/**/bundle/deb/" >&2
+  echo "Tauri completed without producing a .deb under target/**/bundle/deb/" >&2
   exit 1
 fi
 
