@@ -51,6 +51,7 @@ fi
 
 export VITE_DBX_OFFLINE_MODE=true
 export DBX_OFFLINE_BUILD=true
+export TAURI_LINUX_AYATANA_APPINDICATOR=true
 pnpm tauri build --ci --features offline-uos --bundles deb --config src-tauri/tauri.uos-offline.conf.json
 
 deb_source="$(find "$CARGO_TARGET_DIR" -type f -path '*/bundle/deb/*.deb' -printf '%T@ %p\n' 2>/dev/null | sort -nr | sed -n '1s/^[^ ]* //p')"
@@ -78,6 +79,15 @@ normalize_deb_entrypoint() {
   dpkg-deb --extract "$input" "$package_root"
   mkdir -p "$package_root/DEBIAN"
   dpkg-deb --control "$input" "$package_root/DEBIAN"
+
+  # Tauri's Linux bundler may append its host-default WebKitGTK 4.1 and
+  # libappindicator dependencies after merging the base configuration. This
+  # branch must fail closed to the UOS 1070 4.0/Ayatana ABI instead of shipping
+  # a package that asks an offline installer for incompatible mainline libs.
+  sed -i \
+    -e 's/, libwebkit2gtk-4\.1-0//g' \
+    -e 's/, libappindicator3-1//g' \
+    "$package_root/DEBIAN/control"
 
   if [[ ! -x "$package_root/usr/bin/dbx" ]]; then
     while IFS= read -r candidate; do

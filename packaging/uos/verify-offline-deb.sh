@@ -24,8 +24,8 @@ grep -Eq 'libwebkit2gtk-4\.0-37' <<<"$package_info" || {
   echo "The package does not declare the WebKitGTK 4.0 runtime dependency." >&2
   exit 1
 }
-if grep -Eq 'libwebkit2gtk-4\.1|libsoup-3\.0' <<<"$package_info"; then
-  echo "The package still declares a WebKitGTK 4.1/libsoup3 runtime dependency." >&2
+if grep -Eq 'libwebkit2gtk-4\.1|libsoup-3\.0|libappindicator3-1' <<<"$package_info"; then
+  echo "The package still declares a WebKitGTK 4.1/libsoup3/legacy appindicator runtime dependency." >&2
   exit 1
 fi
 
