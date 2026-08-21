@@ -155,7 +155,7 @@ impl WebContextExt for super::WebContext {
         let mut http_request = Request::builder().uri(uri).method("GET");
 
         // Set request http headers
-        if let Some(headers) = request.http_headers() {
+        if let Some(mut headers) = request.http_headers() {
           if let Some(map) = http_request.headers_mut() {
             headers.foreach(move |k, v| {
               if let Ok(name) = HeaderName::from_bytes(k.as_bytes()) {
@@ -208,7 +208,7 @@ impl WebContextExt for super::WebContext {
           Ok(req) => req,
           Err(_) => {
             request.finish_error(&mut gtk::glib::Error::new(
-              glib::UriError::Failed,
+              glib::FileError::Failed,
               "Internal server error: could not create request.",
             ));
             return;
@@ -232,7 +232,7 @@ impl WebContextExt for super::WebContext {
                 response.set_content_type(content_type);
               }
 
-              let headers = MessageHeaders::new(MessageHeadersType::Response);
+              let mut headers = MessageHeaders::new(MessageHeadersType::Response);
               for (name, value) in http_response.headers().into_iter() {
                 headers.append(name.as_str(), value.to_str().unwrap_or(""));
               }

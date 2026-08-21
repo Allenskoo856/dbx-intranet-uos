@@ -949,18 +949,9 @@ impl InnerWebView {
     let secure = cookie.is_secure();
     cookie_builder = cookie_builder.secure(secure);
 
-    let same_site = cookie.same_site_policy();
-    let same_site = match same_site {
-      soup::SameSitePolicy::Lax => cookie::SameSite::Lax,
-      soup::SameSitePolicy::Strict => cookie::SameSite::Strict,
-      soup::SameSitePolicy::None => cookie::SameSite::None,
-      _ => cookie::SameSite::None,
-    };
-    cookie_builder = cookie_builder.same_site(same_site);
-
     let expires = cookie.expires();
     let expires = match expires {
-      Some(datetime) => cookie::time::OffsetDateTime::from_unix_timestamp(datetime.to_unix())
+      Some(mut date) => cookie::time::OffsetDateTime::from_unix_timestamp(date.to_time_t() as i64)
         .ok()
         .map(cookie::Expiration::DateTime),
       None => Some(cookie::Expiration::Session),
@@ -985,19 +976,12 @@ impl InnerWebView {
     );
 
     if let Some(dt) = cookie.expires_datetime() {
-      soup_cookie.set_expires(&gtk::glib::DateTime::from_unix_utc(dt.unix_timestamp()).unwrap());
+      let mut date = soup::Date::from_time_t(dt.unix_timestamp() as _);
+      soup_cookie.set_expires(&mut date);
     }
 
     if let Some(http_only) = cookie.http_only() {
       soup_cookie.set_http_only(http_only);
-    }
-
-    if let Some(same_site) = cookie.same_site() {
-      soup_cookie.set_same_site_policy(match same_site {
-        cookie::SameSite::Lax => soup::SameSitePolicy::Lax,
-        cookie::SameSite::Strict => soup::SameSitePolicy::Strict,
-        cookie::SameSite::None => soup::SameSitePolicy::None,
-      });
     }
 
     if let Some(secure) = cookie.secure() {

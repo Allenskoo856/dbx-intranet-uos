@@ -20,10 +20,14 @@ grep -Eq 'Architecture: amd64' <<<"$package_info" || {
   echo "The offline UOS package must be amd64/x86_64." >&2
   exit 1
 }
-grep -Eq 'libwebkit2gtk-4\.1-0' <<<"$package_info" || {
-  echo "The package does not declare the WebKitGTK 4.1 runtime dependency." >&2
+grep -Eq 'libwebkit2gtk-4\.0-37' <<<"$package_info" || {
+  echo "The package does not declare the WebKitGTK 4.0 runtime dependency." >&2
   exit 1
 }
+if grep -Eq 'libwebkit2gtk-4\.1|libsoup-3\.0' <<<"$package_info"; then
+  echo "The package still declares a WebKitGTK 4.1/libsoup3 runtime dependency." >&2
+  exit 1
+fi
 
 contents="$(dpkg-deb --contents "$deb_path")"
 grep -Eq '/usr/bin/dbx([[:space:]]|$)' <<<"$contents" || {
@@ -35,6 +39,18 @@ extract_dir="$(mktemp -d "${TMPDIR:-/tmp}/dbx-uos-verify.XXXXXX")"
 dpkg-deb --extract "$deb_path" "$extract_dir"
 self_test="$extract_dir/usr/bin/dbx"
 [[ -x "$self_test" ]] || { echo "Extracted DBX executable is missing" >&2; exit 1; }
+
+if command -v readelf >/dev/null 2>&1; then
+  dynamic_deps="$(readelf -d "$self_test")"
+  grep -Eq 'libwebkit2gtk-4\.0|libjavascriptcoregtk-4\.0' <<<"$dynamic_deps" || {
+    echo "The executable does not link to the WebKitGTK 4.0/JSC 4.0 ABI." >&2
+    exit 1
+  }
+  if grep -Eq 'libwebkit2gtk-4\.1|libjavascriptcoregtk-4\.1|libsoup-3\.0' <<<"$dynamic_deps"; then
+    echo "The executable links to an incompatible WebKitGTK 4.1/libsoup3 ABI." >&2
+    exit 1
+  fi
+fi
 
 self_test_output="$($self_test --dbx-offline-self-test)"
 printf '%s\n' "$self_test_output"

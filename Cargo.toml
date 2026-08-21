@@ -1,7 +1,19 @@
 [workspace]
 resolver = "2"
 members = ["src-tauri", "crates/dbx-core", "crates/dbx-web", "crates/dbx-mcp", "crates/dbx-cli"]
-exclude = ["vendor/ctor", "vendor/dirs-sys", "vendor/pageant", "vendor/rumqttc", "vendor/wry"]
+exclude = [
+  "vendor/ctor",
+  "vendor/dirs-sys",
+  "vendor/pageant",
+  "vendor/rumqttc",
+  "vendor/wry",
+  "vendor/soup2",
+  "vendor/soup2-sys",
+  "vendor/webkit2gtk",
+  "vendor/webkit2gtk-sys",
+  "vendor/javascriptcore-rs-sys",
+  "vendor/tauri-runtime-wry",
+]
 
 [patch.crates-io]
 # Tauri 2.11 uses ctor 0.8, which excludes Rust's win7 vendor. This vendors
@@ -19,6 +31,15 @@ pageant = { path = "vendor/pageant" }
 # F6 "Focus Next Pane" accelerator to prevent a black screen on frameless
 # Overlay-titlebar windows (see vendor/wry/src/webview2/mod.rs).
 wry = { path = "vendor/wry" }
+# UOS 1070 is delivered with the WebKitGTK 4.0/libsoup2 ABI. This branch
+# keeps the application on Tauri 2, but supplies the Linux binding/runtime
+# compatibility layer locally instead of relabelling a 4.1 dependency.
+soup2 = { path = "vendor/soup2" }
+soup2-sys = { path = "vendor/soup2-sys" }
+webkit2gtk = { path = "vendor/webkit2gtk" }
+webkit2gtk-sys = { path = "vendor/webkit2gtk-sys" }
+javascriptcore-rs-sys = { path = "vendor/javascriptcore-rs-sys" }
+tauri-runtime-wry = { path = "vendor/tauri-runtime-wry" }
 tokio-postgres = { git = "https://github.com/t8y2/tokio-postgres-gaussdb.git", rev = "ac8ad476de59093d33ab9f294531c956e0c6a724" }
 postgres-types = { git = "https://github.com/t8y2/tokio-postgres-gaussdb.git", rev = "ac8ad476de59093d33ab9f294531c956e0c6a724" }
 postgres-protocol = { git = "https://github.com/t8y2/tokio-postgres-gaussdb.git", rev = "ac8ad476de59093d33ab9f294531c956e0c6a724" }

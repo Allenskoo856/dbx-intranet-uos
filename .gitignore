@@ -15,6 +15,7 @@ CLAUDE.md
 dist/
 coverage/
 /target/
+/target-uos1070-webkit40/
 src-tauri/webview2-fixed-runtime/
 plugins/jdbc/target/
 plugins/jdbc/dependency-reduced-pom.xml

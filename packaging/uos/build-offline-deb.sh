@@ -24,23 +24,44 @@ command -v dpkg-deb >/dev/null || { echo "dpkg-deb is required to build the UOS 
 version="$(sed -n 's/^[[:space:]]*"version":[[:space:]]*"\([^"]*\)"[,]*$/\1/p' package.json | head -n 1)"
 [[ -n "$version" ]] || { echo "Could not read package version" >&2; exit 2; }
 
-if [[ ! -d node_modules ]]; then
-  pnpm install --frozen-lockfile
+# Keep this ABI branch's Rust target separate from the WebKitGTK 4.1 branch.
+# CI overrides this with its cache-backed target directory; local builds get a
+# stable reusable directory without mixing incompatible Linux artifacts.
+build_target_dir="${CARGO_TARGET_DIR:-$repo_root/target-uos1070-webkit40}"
+export CARGO_TARGET_DIR="$build_target_dir"
+export CARGO_INCREMENTAL="${CARGO_INCREMENTAL:-1}"
+mkdir -p "$build_target_dir"
+
+echo "Build cache configuration:"
+echo "  pnpm_store=$(pnpm store path 2>/dev/null || echo unavailable)"
+echo "  cargo_home=${CARGO_HOME:-$HOME/.cargo}"
+echo "  cargo_target=$CARGO_TARGET_DIR"
+echo "  cargo_incremental=$CARGO_INCREMENTAL"
+echo "  rustc_wrapper=${RUSTC_WRAPPER:-none}"
+if command -v sccache >/dev/null 2>&1; then
+  sccache --show-stats || true
+fi
+
+if [[ ! -x node_modules/.bin/tauri ]]; then
+  pnpm install --frozen-lockfile --force
+elif ! compgen -G 'node_modules/.pnpm/@rolldown+binding-linux-x64-gnu@*/node_modules/@rolldown/binding-linux-x64-gnu/rolldown-binding*.node' >/dev/null; then
+  echo "Frontend cache is missing the Linux x64 Rolldown native binding; repairing it with pnpm --force."
+  pnpm install --frozen-lockfile --force
 fi
 
 export VITE_DBX_OFFLINE_MODE=true
 export DBX_OFFLINE_BUILD=true
 pnpm tauri build --ci --features offline-uos --bundles deb --config src-tauri/tauri.uos-offline.conf.json
 
-deb_source="$(find target -type f -path '*/bundle/deb/*.deb' -printf '%T@ %p\n' 2>/dev/null | sort -nr | sed -n '1s/^[^ ]* //p')"
+deb_source="$(find "$CARGO_TARGET_DIR" -type f -path '*/bundle/deb/*.deb' -printf '%T@ %p\n' 2>/dev/null | sort -nr | sed -n '1s/^[^ ]* //p')"
 if [[ -z "$deb_source" ]]; then
-  echo "Tauri completed without producing a .deb under target/**/bundle/deb/" >&2
+  echo "Tauri completed without producing a .deb under $CARGO_TARGET_DIR/**/bundle/deb/" >&2
   exit 1
 fi
 
-output_dir="$repo_root/dist/uos-offline"
+output_dir="$repo_root/dist/uos1070-webkit40"
 mkdir -p "$output_dir"
-asset="$output_dir/DBX_${version}_uos-offline_${deb_arch}.deb"
+asset="$output_dir/DBX_${version}_uos1070-webkit40_${deb_arch}.deb"
 
 # Keep a stable local entrypoint even when a Tauri CLI/config combination uses
 # the product name for the Debian binary filename. The offline manual and
@@ -118,8 +139,13 @@ printf '%s\n' \
   '  "runtime_network_required": false,' \
   '  "public_update_checks": false,' \
   '  "remote_agent_and_mcp_downloads": false,' \
-  '  "required_webkit": "WebKitGTK 4.1 (libwebkit2gtk-4.1-0)"' \
+  '  "required_webkit": "WebKitGTK 4.0 (libwebkit2gtk-4.0-37)",' \
+  '  "required_libsoup": "libsoup2.4 (libsoup-2.4.so.1)",' \
+  '  "minimum_webkit_api": "2.36"' \
   '}' > "$output_dir/manifest.json"
 
 echo "Built offline package: $asset"
 echo "SHA256: $(awk '{print $1}' "$asset.sha256")"
+if command -v sccache >/dev/null 2>&1; then
+  sccache --show-stats || true
+fi

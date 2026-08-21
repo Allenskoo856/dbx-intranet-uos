@@ -64,7 +64,7 @@ os-webview = [
     "webkit2gtk",
     "webkit2gtk-sys",
     "dep:gtk",
-    "soup3",
+    "soup2",
 ]
 protocol = []
 serde = ["dpi/serde"]
@@ -219,13 +219,13 @@ optional = true
 [target.'cfg(any(target_os = "linux", target_os = "dragonfly", target_os = "freebsd", target_os = "openbsd", target_os = "netbsd"))'.dependencies.percent-encoding]
 version = "2.3"
 
-[target.'cfg(any(target_os = "linux", target_os = "dragonfly", target_os = "freebsd", target_os = "openbsd", target_os = "netbsd"))'.dependencies.soup3]
-version = "0.5"
+[target.'cfg(any(target_os = "linux", target_os = "dragonfly", target_os = "freebsd", target_os = "openbsd", target_os = "netbsd"))'.dependencies.soup2]
+version = "0.2"
 optional = true
 
 [target.'cfg(any(target_os = "linux", target_os = "dragonfly", target_os = "freebsd", target_os = "openbsd", target_os = "netbsd"))'.dependencies.webkit2gtk]
 version = "=2.0.2"
-features = ["v2_38"]
+features = ["v2_36"]
 optional = true
 
 [target.'cfg(any(target_os = "linux", target_os = "dragonfly", target_os = "freebsd", target_os = "openbsd", target_os = "netbsd"))'.dependencies.webkit2gtk-sys]

@@ -7,7 +7,7 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends \
       ca-certificates \
       dpkg \
-      libwebkit2gtk-4.1-0 \
+      libwebkit2gtk-4.0-37 \
       libgtk-3-0 \
       libayatana-appindicator3-1 \
     && rm -rf /var/lib/apt/lists/*

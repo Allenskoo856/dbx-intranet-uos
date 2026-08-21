@@ -4257,8 +4257,6 @@ dependencies = [
 [[package]]
 name = "javascriptcore-rs-sys"
 version = "1.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "af1be78d14ffa4b75b66df31840478fef72b51f8c2465d4ca7c194da9f7a5124"
 dependencies = [
  "glib-sys",
  "gobject-sys",
@@ -8039,24 +8037,22 @@ dependencies = [
 ]
 
 [[package]]
-name = "soup3"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "471f924a40f31251afc77450e781cb26d55c0b650842efafc9c6cbd2f7cc4f9f"
+name = "soup2"
+version = "0.2.1"
 dependencies = [
- "futures-channel",
+ "bitflags 1.3.2",
  "gio",
  "glib",
  "libc",
- "soup3-sys",
+ "once_cell",
+ "soup2-sys",
 ]
 
 [[package]]
-name = "soup3-sys"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7ebe8950a680a12f24f15ebe1bf70db7af98ad242d9db43596ad3108aab86c27"
+name = "soup2-sys"
+version = "0.2.0"
 dependencies = [
+ "bitflags 1.3.2",
  "gio-sys",
  "glib-sys",
  "gobject-sys",
@@ -8801,8 +8797,6 @@ dependencies = [
 [[package]]
 name = "tauri-runtime-wry"
 version = "2.11.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4e6fac707727b7a2f48e4ded90976324267371073edbb415ffb73bb0458d203f"
 dependencies = [
  "gtk",
  "http 1.5.0",
@@ -10094,8 +10088,6 @@ dependencies = [
 [[package]]
 name = "webkit2gtk"
 version = "2.0.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a1027150013530fb2eaf806408df88461ae4815a45c541c8975e61d6f2fc4793"
 dependencies = [
  "bitflags 1.3.2",
  "cairo-rs",
@@ -10111,15 +10103,13 @@ dependencies = [
  "javascriptcore-rs",
  "libc",
  "once_cell",
- "soup3",
+ "soup2",
  "webkit2gtk-sys",
 ]
 
 [[package]]
 name = "webkit2gtk-sys"
 version = "2.0.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "916a5f65c2ef0dfe12fff695960a2ec3d4565359fdbb2e9943c974e06c734ea5"
 dependencies = [
  "bitflags 1.3.2",
  "cairo-sys-rs",
@@ -10131,7 +10121,7 @@ dependencies = [
  "javascriptcore-rs-sys",
  "libc",
  "pkg-config",
- "soup3-sys",
+ "soup2-sys",
  "system-deps",
 ]
 
@@ -10885,7 +10875,7 @@ dependencies = [
  "percent-encoding",
  "raw-window-handle",
  "sha2 0.10.9",
- "soup3",
+ "soup2",
  "tao-macros",
  "thiserror 2.0.19",
  "url",

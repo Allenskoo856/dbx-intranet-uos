@@ -18,10 +18,10 @@
 
 ```bash
 dpkg --audit
-dpkg-deb --info DBX_<version>_uos-offline_amd64.deb
+dpkg-deb --info DBX_<version>_uos1070-webkit40_amd64.deb
 ```
 
-重点检查架构是否为 `amd64`，以及 `libwebkit2gtk-4.1-0`、GTK 和 AppIndicator 依赖是否由批准的软件源提供。不要用公网 apt 源补依赖。
+重点检查架构是否为 `amd64`，以及本分支的 `libwebkit2gtk-4.0-37`、JSC 4.0、libsoup2、GTK 和 AppIndicator 依赖是否由批准的软件源提供。不要用公网 apt 源补依赖。
 
 ### 程序安装成功但启动失败
 
