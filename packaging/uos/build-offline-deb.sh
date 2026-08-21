@@ -82,23 +82,38 @@ normalize_deb_entrypoint() {
       sed 's#  \./#  #'
   ) > "$package_root/DEBIAN/md5sums"
 
-  dpkg-deb --build "$package_root" "$output" >/dev/null
+  # Debian 10's dpkg-deb does not reliably understand the zstd members that
+  # newer Ubuntu builders choose by default. gzip keeps the archive readable
+  # by Debian 10-like UOS installers.
+  dpkg-deb --build --root-owner-group -Zgzip -z9 "$package_root" "$output" >/dev/null
   rm -rf "$package_root"
 }
 
 normalize_deb_entrypoint "$deb_source" "$asset"
-sha256sum "$asset" > "$asset.sha256"
+asset_name="$(basename "$asset")"
+(
+  cd "$output_dir"
+  sha256sum "$asset_name" > "$asset_name.sha256"
+)
 cp "$asset.sha256" "$output_dir/SHA256SUMS"
 
 source_commit="$(git rev-parse HEAD)"
-upstream_commit="$(git rev-parse upstream/main 2>/dev/null || true)"
+upstream_commit=""
+if git rev-parse --verify upstream/main^{commit} >/dev/null 2>&1; then
+  upstream_commit="$(git rev-parse upstream/main)"
+fi
+if [[ -n "$upstream_commit" ]]; then
+  upstream_manifest_line='  "upstream_commit": "'"$upstream_commit"'",'
+else
+  upstream_manifest_line='  "upstream_commit": null,'
+fi
 printf '%s\n' \
   '{' \
   "  \"product\": \"DBX UOS Offline\"," \
   "  \"version\": \"$version\"," \
   "  \"architecture\": \"$deb_arch\"," \
   "  \"source_commit\": \"$source_commit\"," \
-  "  \"upstream_commit\": \"$upstream_commit\"," \
+  "$upstream_manifest_line" \
   '  "target_family": "UOS/Debian-like Linux x86_64",' \
   '  "runtime_network_required": false,' \
   '  "public_update_checks": false,' \
